@@ -12,14 +12,14 @@ module.exports.run = async function () {
   // Then use raw.githubusercontent as a fallback if API is unavailable.
   const apiURL = "https://api.github.com/repos/Liifert/afterwords-dictionary/contents/words.json?ref=main";
   let attempts=[];
-  const sources=[
-    {name:"GitHub API",url:apiURL+"&ts="+Date.now(),api:true},
-    {name:"GitHub RAW",url:URL+"?ts="+Date.now(),api:false}
-  ];
+  const sources=config.runsInWidget
+    ? [{name:"GitHub RAW",url:URL+"?ts="+Date.now(),api:false}]
+    : [{name:"GitHub API",url:apiURL+"&ts="+Date.now(),api:true},
+       {name:"GitHub RAW",url:URL+"?ts="+Date.now(),api:false}];
   for(const source of sources) {
     try {
       const req=new Request(source.url);
-      req.timeoutInterval=18;
+      req.timeoutInterval=config.runsInWidget?5:18;
       req.headers={"Cache-Control":"no-cache","Accept":source.api?"application/vnd.github+json":"application/json"};
       const response=await req.loadJSON();
       let data=response;
@@ -107,10 +107,11 @@ module.exports.run = async function () {
     line(chosen.film||"English vocabulary",10,false,"#A49B90");
   }
   Script.setWidget(w);
+  console.log("AFTERWORDS: "+words.length+" words, slot "+slot+", currently "+chosen.word);
   if(!config.runsInWidget){
     const table=new UITable();table.showSeparators=true;
     const header=new UITableRow();header.isHeader=true;header.height=50;
-    header.addText("AFTERWORDS · "+words.length+" слов",syncSource+(syncError?" · "+syncError:""));
+    header.addText("AFTERWORDS · "+words.length+" слов",syncSource+" · проверено "+new Date().toLocaleTimeString()+(syncError?" · "+syncError:""));
     table.addRow(header);
     for(const item of words) {
       const row=new UITableRow();row.height=70;
