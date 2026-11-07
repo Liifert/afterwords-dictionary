@@ -8,14 +8,47 @@ module.exports.run = async function () {
   let syncSource="сохранённая копия";
   let syncError="";
   try { if(fm.fileExists(path)) words=validate(JSON.parse(fm.readString(path)).words); } catch(e){}
-  try {
-    const req = new Request(URL+"?t="+Date.now());
-    req.timeoutInterval=18;
-    req.headers={"Cache-Control":"no-cache"};
-    const data=await req.loadJSON();
-    const fresh=validate(Array.isArray(data)?data:data.words);
-    if(fresh.length) { words=fresh; syncSource="GitHub обновлён"; fm.writeString(path,JSON.stringify({words:fresh})); }
-  } catch(e) { syncError=String(e); console.warn("AFTERWORDS vocabulary offline: "+e); }
+  // Fetch directly from GitHub Contents API to avoid stale raw-CDN responses.
+  // Then use raw.githubusercontent as a fallback if API is unavailable.
+  const apiURL = "https://api.github.com/repos/Liifert/afterwords-dictionary/contents/words.json?ref=main";
+  let attempts=[];
+  const sources=[
+    {name:"GitHub API",url:apiURL+"&ts="+Date.now(),api:true},
+    {name:"GitHub RAW",url:URL+"?ts="+Date.now(),api:false}
+  ];
+  for(const source of sources) {
+    try {
+      const req=new Request(source.url);
+      req.timeoutInterval=18;
+      req.headers={"Cache-Control":"no-cache","Accept":source.api?"application/vnd.github+json":"application/json"};
+      const response=await req.loadJSON();
+      let data=response;
+      if(source.api) {
+        if(!response.content) throw new Error("GitHub API did not return file content");
+        const decoded=Data.fromBase64String(response.content.replace(/\\s/g,""));
+        if(!decoded) throw new Error("Cannot decode GitHub response");
+        data=JSON.parse(decoded.toRawString());
+      }
+      const fresh=validate(Array.isArray(data)?data:data.words);
+      if(!fresh.length) throw new Error("Empty vocabulary");
+      // Never overwrite a newer local snapshot with a stale cached response.
+      // A deletion will be reflected once the newer GitHub copy has propagated.
+      if(fresh.length>=words.length) {
+        words=fresh;
+        syncSource=source.name+" · "+fresh.length+" слов";
+        fm.writeString(path,JSON.stringify({words:fresh}));
+      } else {
+        attempts.push(source.name+": старая версия ("+fresh.length+" слов)");
+      }
+      if(syncSource.indexOf(source.name)===0) break;
+    } catch(e) {
+      attempts.push(source.name+": "+e);
+    }
+  }
+  if(syncSource==="сохранённая копия") {
+    syncError=attempts.join("; ");
+    console.warn("AFTERWORDS sync issue: "+syncError);
+  }
   if(!words.length) words=[{word:"snuggle",ipa:"/ˈsnʌɡəl/",meaning:"прижиматься, обниматься",film:"The Proposal",addedAt:""}];
   const now = new Date();
   const today = new Date(now.getFullYear(),now.getMonth(),now.getDate());
