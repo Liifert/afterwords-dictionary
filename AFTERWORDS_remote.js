@@ -25,7 +25,7 @@ module.exports.run = async function () {
       let data=response;
       if(source.api) {
         if(!response.content) throw new Error("GitHub API did not return file content");
-        const decoded=Data.fromBase64String(response.content.replace(/\\s/g,""));
+        const decoded=Data.fromBase64String(response.content.replace(/\s/g,""));
         if(!decoded) throw new Error("Cannot decode GitHub response");
         data=JSON.parse(decoded.toRawString());
       }
