@@ -5,14 +5,17 @@ module.exports.run = async function () {
   const path = fm.joinPath(fm.documentsDirectory(),"afterwords-vocab-cache.json");
   const validate = x => Array.isArray(x) ? x.filter(w => w && typeof w.word === "string" && w.word.trim()).map(w => ({word:w.word.trim(),ipa:String(w.ipa||""),meaning:String(w.meaning||""),film:String(w.film||""),addedAt:String(w.addedAt||"")})) : [];
   let words=[];
+  let syncSource="сохранённая копия";
+  let syncError="";
   try { if(fm.fileExists(path)) words=validate(JSON.parse(fm.readString(path)).words); } catch(e){}
   try {
-    const req = new Request(URL+"?t="+Math.floor(Date.now()/1800000));
-    req.timeoutInterval=8;
+    const req = new Request(URL+"?t="+Date.now());
+    req.timeoutInterval=18;
+    req.headers={"Cache-Control":"no-cache"};
     const data=await req.loadJSON();
     const fresh=validate(Array.isArray(data)?data:data.words);
-    if(fresh.length) { words=fresh; fm.writeString(path,JSON.stringify({words:fresh})); }
-  } catch(e) { console.warn("AFTERWORDS vocabulary offline: "+e); }
+    if(fresh.length) { words=fresh; syncSource="GitHub обновлён"; fm.writeString(path,JSON.stringify({words:fresh})); }
+  } catch(e) { syncError=String(e); console.warn("AFTERWORDS vocabulary offline: "+e); }
   if(!words.length) words=[{word:"snuggle",ipa:"/ˈsnʌɡəl/",meaning:"прижиматься, обниматься",film:"The Proposal",addedAt:""}];
   const now = new Date();
   const today = new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -74,7 +77,7 @@ module.exports.run = async function () {
   if(!config.runsInWidget){
     const table=new UITable();table.showSeparators=true;
     const header=new UITableRow();header.isHeader=true;header.height=50;
-    header.addText("AFTERWORDS · "+words.length+" слов","Автоматическая синхронизация GitHub");
+    header.addText("AFTERWORDS · "+words.length+" слов",syncSource+(syncError?" · "+syncError:""));
     table.addRow(header);
     for(const item of words) {
       const row=new UITableRow();row.height=70;
